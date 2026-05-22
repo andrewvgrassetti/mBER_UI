@@ -1,0 +1,26 @@
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./jobs:/app/jobs
+      - ${MBER_REPO_PATH:-/home/ubuntu/mber-open}:/mber-open:ro
+    environment:
+      - MBER_UI_MBER_REPO_PATH=/mber-open
+      - MBER_UI_JOBS_DIR=/app/jobs
+      - MBER_UI_MODEL_WEIGHTS_DIR=/mber-open/weights
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
