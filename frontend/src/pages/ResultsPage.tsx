@@ -79,7 +79,7 @@ export default function ResultsPage() {
       </div>
 
       {/* Live Log (if running) */}
-      {job.status === "running" && streamData.log && (
+      {job.status === "running" && streamData?.log && (
         <div className="mb-6 rounded-lg border p-4 bg-card">
           <h2 className="font-semibold mb-2">Live Log</h2>
           <pre className="text-xs font-mono max-h-48 overflow-y-auto whitespace-pre-wrap bg-muted p-3 rounded">
