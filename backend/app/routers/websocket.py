@@ -1,6 +1,7 @@
 """WebSocket endpoint for real-time job log streaming."""
 
 import asyncio
+import re
 from pathlib import Path
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -10,11 +11,18 @@ from ..core.config import settings
 
 router = APIRouter(tags=["websocket"])
 
+_JOB_ID_PATTERN = re.compile(r"^[a-f0-9]{8}$")
+
 
 @router.websocket("/jobs/{job_id}/stream")
 async def job_log_stream(websocket: WebSocket, job_id: str):
     """Stream job logs and progress updates via WebSocket."""
     await websocket.accept()
+
+    if not _JOB_ID_PATTERN.match(job_id):
+        await websocket.send_json({"error": "Invalid job ID"})
+        await websocket.close()
+        return
 
     job = job_service.get_job(job_id)
     if not job:
@@ -22,7 +30,7 @@ async def job_log_stream(websocket: WebSocket, job_id: str):
         await websocket.close()
         return
 
-    log_path = Path(settings.jobs_dir) / job_id / "output.log"
+    log_path = Path(settings.jobs_dir).resolve() / job_id / "output.log"
     last_position = 0
 
     try:

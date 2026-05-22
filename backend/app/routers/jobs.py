@@ -1,6 +1,7 @@
 """Job management API routes."""
 
 import os
+import re
 import shutil
 from pathlib import Path
 
@@ -12,6 +13,9 @@ from ..services import job_service
 from ..core.config import settings
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
+
+# Pattern for safe filenames
+_SAFE_FILENAME = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,254}$")
 
 
 @router.post("", response_model=dict)
@@ -34,15 +38,19 @@ async def submit_job(
     """Submit a new mBER design job."""
     # Handle PDB input
     if pdb_file:
+        # Validate and sanitize filename
+        filename = Path(pdb_file.filename or "upload.pdb").name
+        if not _SAFE_FILENAME.match(filename):
+            raise HTTPException(status_code=400, detail="Invalid filename")
         # Save uploaded PDB
-        upload_dir = Path(settings.jobs_dir) / "uploads"
+        upload_dir = Path(settings.jobs_dir).resolve() / "uploads"
         upload_dir.mkdir(parents=True, exist_ok=True)
-        pdb_path = str(upload_dir / pdb_file.filename)
+        pdb_path = str(upload_dir / filename)
         with open(pdb_path, "wb") as f:
             content = await pdb_file.read()
             f.write(content)
         if not target_name:
-            target_name = Path(pdb_file.filename).stem
+            target_name = Path(filename).stem
     elif pdb_code:
         # TODO: Download PDB from RCSB
         pdb_path = f"/tmp/pdb_{pdb_code}.pdb"
@@ -113,6 +121,8 @@ async def get_job_log(job_id: str, tail: int = 100):
 @router.get("/{job_id}/files/{filename:path}")
 async def get_output_file(job_id: str, filename: str):
     """Serve an output file (PDB, PNG, etc)."""
+    if ".." in filename or filename.startswith("/"):
+        raise HTTPException(status_code=400, detail="Invalid filename")
     file_path = job_service.get_output_file_path(job_id, filename)
     if not file_path:
         raise HTTPException(status_code=404, detail="File not found")

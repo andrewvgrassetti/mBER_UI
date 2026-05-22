@@ -3,6 +3,7 @@
 import asyncio
 import csv
 import os
+import re
 import shutil
 import subprocess
 import uuid
@@ -26,14 +27,24 @@ from ..models.job import (
 _jobs: dict[str, dict] = {}
 _processes: dict[str, asyncio.subprocess.Process] = {}
 
+# Strict pattern for job IDs (8 hex chars)
+_JOB_ID_PATTERN = re.compile(r"^[a-f0-9]{8}$")
+
+
+def _validate_job_id(job_id: str) -> bool:
+    """Validate that a job ID matches the expected format."""
+    return bool(_JOB_ID_PATTERN.match(job_id))
+
 
 def _jobs_root() -> Path:
-    p = Path(settings.jobs_dir)
+    p = Path(settings.jobs_dir).resolve()
     p.mkdir(parents=True, exist_ok=True)
     return p
 
 
 def _job_dir(job_id: str) -> Path:
+    if not _validate_job_id(job_id):
+        raise ValueError(f"Invalid job ID: {job_id}")
     return _jobs_root() / job_id
 
 
@@ -265,12 +276,19 @@ def get_job_log(job_id: str, tail_lines: int = 100) -> str:
 
 def get_output_file_path(job_id: str, filename: str) -> Optional[Path]:
     """Get path to an output file (PDB, etc)."""
-    job_path = _job_dir(job_id) / "output"
-    file_path = job_path / filename
+    if not _validate_job_id(job_id):
+        return None
 
-    # Security: prevent directory traversal
+    # Reject filenames with path traversal attempts
+    if ".." in filename or filename.startswith("/"):
+        return None
+
+    job_path = _job_dir(job_id) / "output"
+    file_path = (job_path / filename).resolve()
+
+    # Security: ensure resolved path is within the output directory
     try:
-        file_path.resolve().relative_to(job_path.resolve())
+        file_path.relative_to(job_path.resolve())
     except ValueError:
         return None
 
