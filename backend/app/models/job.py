@@ -64,6 +64,7 @@ class JobListItem(BaseModel):
     status: JobStatus
     created_at: datetime
     progress: JobProgress
+    error_message: Optional[str] = None
 
 
 class DesignResult(BaseModel):
