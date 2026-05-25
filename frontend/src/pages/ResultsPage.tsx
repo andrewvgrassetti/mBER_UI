@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
-import { getJob, getResults, getFileUrl, type JobDetail, type DesignResult } from "../lib/api";
+import { getJob, getResults, getJobLog, getFileUrl, type JobDetail, type DesignResult } from "../lib/api";
 import { useJobStream } from "../hooks/useJobStream";
 
 type SortField = "iptm" | "plddt" | "index";
@@ -12,6 +12,8 @@ export default function ResultsPage() {
   const [sortField, setSortField] = useState<SortField>("iptm");
   const [sortAsc, setSortAsc] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [fullLog, setFullLog] = useState<string | null>(null);
+  const [logLoading, setLogLoading] = useState(false);
 
   const { data: streamData } = useJobStream(
     job?.status === "running" ? jobId! : null
@@ -78,6 +80,16 @@ export default function ResultsPage() {
         </p>
       </div>
 
+      {/* Error Banner (if failed) */}
+      {job.status === "failed" && job.error_message && (
+        <div className="mb-6 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg p-4">
+          <h2 className="font-semibold text-red-800 dark:text-red-200 mb-2">Error</h2>
+          <pre className="font-mono text-xs text-red-800 dark:text-red-200 whitespace-pre-wrap">
+            {job.error_message}
+          </pre>
+        </div>
+      )}
+
       {/* Live Log (if running) */}
       {job.status === "running" && streamData?.log && (
         <div className="mb-6 rounded-lg border p-4 bg-card">
@@ -85,6 +97,39 @@ export default function ResultsPage() {
           <pre className="text-xs font-mono max-h-48 overflow-y-auto whitespace-pre-wrap bg-muted p-3 rounded">
             {streamData.log.slice(-5000)}
           </pre>
+        </div>
+      )}
+
+      {/* Full Log Viewer (for failed and completed jobs) */}
+      {(job.status === "failed" || job.status === "completed") && (
+        <div className="mb-6">
+          {fullLog === null ? (
+            <button
+              onClick={async () => {
+                setLogLoading(true);
+                try {
+                  const data = await getJobLog(jobId!);
+                  setFullLog(data.log);
+                } catch (err) {
+                  console.error("Failed to fetch log:", err);
+                  setFullLog("Failed to load log.");
+                } finally {
+                  setLogLoading(false);
+                }
+              }}
+              className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-accent"
+              disabled={logLoading}
+            >
+              {logLoading ? "Loading..." : "View Full Log"}
+            </button>
+          ) : (
+            <div>
+              <h2 className="font-semibold mb-2">Full Log</h2>
+              <pre className="bg-gray-900 text-gray-100 font-mono text-xs p-4 rounded-lg max-h-[400px] overflow-y-auto whitespace-pre-wrap">
+                {fullLog}
+              </pre>
+            </div>
+          )}
         </div>
       )}
 

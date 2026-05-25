@@ -7,6 +7,7 @@ export interface JobListItem {
   target_name: string;
   status: "pending" | "running" | "completed" | "failed" | "cancelled";
   created_at: string;
+  error_message: string | null;
   progress: {
     accepted_count: number;
     total_trajectories: number;

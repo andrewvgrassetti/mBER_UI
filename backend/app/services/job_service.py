@@ -169,7 +169,16 @@ async def _run_job(job_id: str, settings_path: str) -> None:
             job["status"] = JobStatus.COMPLETED
         else:
             job["status"] = JobStatus.FAILED
-            job["error_message"] = f"Process exited with code {process.returncode}"
+            # Read last 50 lines of log for error context
+            log_tail = ""
+            if log_path.exists():
+                with open(log_path, "r") as lf:
+                    lines = lf.readlines()
+                    log_tail = "".join(lines[-50:])
+            job["error_message"] = (
+                f"Process exited with code {process.returncode}\n\n"
+                f"--- Last 50 lines of log ---\n{log_tail}"
+            )
     except Exception as e:
         job["status"] = JobStatus.FAILED
         job["error_message"] = str(e)
@@ -211,6 +220,7 @@ def list_jobs() -> list[JobListItem]:
                 status=job["status"],
                 created_at=job["created_at"],
                 progress=progress,
+                error_message=job.get("error_message"),
             )
         )
     return sorted(result, key=lambda j: j.created_at, reverse=True)
