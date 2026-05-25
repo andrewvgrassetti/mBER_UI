@@ -61,10 +61,13 @@ def _generate_settings_yaml(job_id: str, submission: JobSubmission, pdb_path: st
             "pdb": pdb_path,
             "name": submission.target_name or Path(pdb_path).stem,
             "chains": submission.target_chains,
+            "hotspots": submission.hotspot_residues if submission.hotspot_residues else None,
         },
-        "design": {
+        "stopping": {
             "num_accepted": submission.num_accepted,
             "max_trajectories": submission.max_trajectories,
+        },
+        "filters": {
             "min_iptm": submission.min_iptm,
             "min_plddt": submission.min_plddt,
         },
@@ -74,16 +77,10 @@ def _generate_settings_yaml(job_id: str, submission: JobSubmission, pdb_path: st
             "skip_pickle": submission.skip_pickle,
             "skip_png": submission.skip_png,
         },
-        "gpu": {
-            "device": submission.gpu_device,
-        },
     }
 
-    if submission.hotspot_residues:
-        settings_dict["target"]["hotspot_residues"] = submission.hotspot_residues
-
     if submission.masked_vhh_sequence:
-        settings_dict["design"]["masked_vhh_sequence"] = submission.masked_vhh_sequence
+        settings_dict["binder"] = {"masked_sequence": submission.masked_vhh_sequence}
 
     settings_path = str(job_path / "settings.yaml")
     with open(settings_path, "w") as f:
