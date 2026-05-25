@@ -58,7 +58,7 @@ def _generate_settings_yaml(job_id: str, submission: JobSubmission, pdb_path: st
 
     settings_dict = {
         "target": {
-            "pdb_path": pdb_path,
+            "pdb": pdb_path,
             "name": submission.target_name or Path(pdb_path).stem,
             "chains": submission.target_chains.split(","),
         },
