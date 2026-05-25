@@ -15,6 +15,13 @@ export default function JobSubmitPage() {
     const form = e.currentTarget;
     const formData = new FormData(form);
 
+    // If a PDB code is provided and no file was selected, remove the empty pdb_file field
+    const pdbCode = formData.get("pdb_code");
+    const pdbFile = formData.get("pdb_file") as File | null;
+    if (pdbCode && (!pdbFile || !pdbFile.name || pdbFile.size === 0)) {
+      formData.delete("pdb_file");
+    }
+
     try {
       const result = await submitJob(formData);
       navigate(`/dashboard`);

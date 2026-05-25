@@ -37,9 +37,9 @@ async def submit_job(
 ):
     """Submit a new mBER design job."""
     # Handle PDB input
-    if pdb_file:
+    if pdb_file and pdb_file.filename:
         # Validate and sanitize filename
-        filename = Path(pdb_file.filename or "upload.pdb").name
+        filename = Path(pdb_file.filename).name
         if not _SAFE_FILENAME.match(filename):
             raise HTTPException(status_code=400, detail="Invalid filename")
         # Save uploaded PDB
