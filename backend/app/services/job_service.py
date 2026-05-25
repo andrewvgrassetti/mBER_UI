@@ -60,7 +60,7 @@ def _generate_settings_yaml(job_id: str, submission: JobSubmission, pdb_path: st
         "target": {
             "pdb": pdb_path,
             "name": submission.target_name or Path(pdb_path).stem,
-            "chains": submission.target_chains.split(","),
+            "chains": submission.target_chains,
         },
         "design": {
             "num_accepted": submission.num_accepted,
@@ -80,7 +80,7 @@ def _generate_settings_yaml(job_id: str, submission: JobSubmission, pdb_path: st
     }
 
     if submission.hotspot_residues:
-        settings_dict["target"]["hotspot_residues"] = submission.hotspot_residues.split(",")
+        settings_dict["target"]["hotspot_residues"] = submission.hotspot_residues
 
     if submission.masked_vhh_sequence:
         settings_dict["design"]["masked_vhh_sequence"] = submission.masked_vhh_sequence
