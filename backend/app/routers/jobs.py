@@ -52,15 +52,10 @@ async def submit_job(
         if not target_name:
             target_name = Path(filename).stem
     elif pdb_code:
-        # TODO: Download PDB from RCSB
-        pdb_path = f"/tmp/pdb_{pdb_code}.pdb"
-        if not os.path.exists(pdb_path):
-            raise HTTPException(
-                status_code=400,
-                detail=f"PDB code download not yet implemented. Please upload a PDB file.",
-            )
+        # mBER's process_target handles PDB codes natively (downloads from RCSB)
+        pdb_path = pdb_code.upper()
         if not target_name:
-            target_name = pdb_code
+            target_name = pdb_code.upper()
     else:
         raise HTTPException(status_code=400, detail="Either pdb_file or pdb_code is required")
 
