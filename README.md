@@ -27,32 +27,105 @@ mBER_UI/
 
 ## Prerequisites
 
-- **mber-open** repository cloned (e.g., at `/home/ubuntu/mber-open`)
+- **mber-open** repository cloned (e.g., at `/home/ubuntu/mber-open/mber-open`)
+- **mber conda environment** with `mber-vhh` CLI installed (`pip install -e protocols` inside the mber env)
 - NVIDIA GPU with 32GB+ VRAM
-- Model weights downloaded (~9GB)
-- Python 3.11+ and Node.js 20+
+- Model weights downloaded (~9GB) via `bash download_weights.sh` (installs to `~/.mber`)
+- Python 3.11+ (for backend venv)
+- Node.js 20+ (for frontend)
 
 ## Quick Start (Development)
 
-### Backend
+### 1. Install mber-vhh CLI (one-time setup)
+
+```bash
+cd /home/ubuntu/mber-open/mber-open
+conda activate mber
+pip install -e protocols
+which mber-vhh  # Note this path for .env
+conda deactivate
+```
+
+### 2. Download model weights (one-time setup)
+
+```bash
+cd /home/ubuntu/mber-open/mber-open
+bash download_weights.sh
+# Weights install to ~/.mber
+```
+
+### 3. Backend setup
 
 ```bash
 cd backend
-python -m venv venv && source venv/bin/activate
+python3.12 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env  # Edit paths to match your setup
+```
+
+### 4. Configure .env
+
+```bash
+cp .env.example .env
+nano .env
+```
+
+Set the following values:
+
+```
+MBER_UI_MBER_CLI_PATH=/home/ubuntu/miniconda3/envs/mber/bin/mber-vhh
+MBER_UI_MBER_REPO_PATH=/home/ubuntu/mber-open/mber-open
+MBER_UI_JOBS_DIR=./jobs
+MBER_UI_MODEL_WEIGHTS_DIR=/home/ubuntu/.mber
+MBER_UI_DEFAULT_GPU_DEVICE=0
+MBER_UI_HOST=0.0.0.0
+MBER_UI_PORT=8000
+MBER_UI_CORS_ORIGINS=["http://localhost:5173","http://localhost:3000"]
+```
+
+Save with `Ctrl+O`, `Enter`, `Ctrl+X`.
+
+### 5. Start the backend
+
+```bash
+cd ~/GitRepos/mBER_UI/backend
+source venv/bin/activate
 uvicorn app.main:app --reload --port 8000
 ```
 
-### Frontend
+Leave this terminal running.
+
+### 6. Start the frontend (new terminal)
 
 ```bash
-cd frontend
+cd ~/GitRepos/mBER_UI/frontend
 npm install
-npm run dev  # Starts on http://localhost:5173
+npm run dev
 ```
 
-The Vite dev server proxies `/api` requests to the backend at port 8000.
+Open http://localhost:5173 in your browser.
+
+## Restarting the App
+
+### Stop
+
+1. In the **backend** terminal: press `Ctrl+C`
+2. In the **frontend** terminal: press `Ctrl+C`
+
+### Restart backend
+
+```bash
+cd ~/GitRepos/mBER_UI/backend
+source venv/bin/activate
+uvicorn app.main:app --reload --port 8000
+```
+
+### Restart frontend (new terminal)
+
+```bash
+cd ~/GitRepos/mBER_UI/frontend
+npm run dev
+```
 
 ## Quick Start (Docker)
 
@@ -72,7 +145,7 @@ All configuration is via environment variables (prefix `MBER_UI_`):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `MBER_UI_MBER_CLI_PATH` | `mber-vhh` | Path to the mber-vhh executable |
+| `MBER_UI_MBER_CLI_PATH` | `mber-vhh` | Full path to the mber-vhh executable |
 | `MBER_UI_MBER_REPO_PATH` | `/home/ubuntu/mber-open` | Path to the mber-open repo |
 | `MBER_UI_JOBS_DIR` | `./jobs` | Directory for job data |
 | `MBER_UI_MODEL_WEIGHTS_DIR` | `/home/ubuntu/mber-open/weights` | Model weights path |
