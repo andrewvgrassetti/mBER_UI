@@ -36,6 +36,26 @@ mBER_UI/
 
 ## Quick Start (Development)
 
+### 0. Apply HMMER 3.4 / BioPython compatibility patches (one-time setup)
+
+The `src/mber/patches/nbb2_compat.py` module contains monkey-patches that fix
+anarci and ImmuneBuilder incompatibilities introduced by HMMER 3.4.  Apply them
+by adding the following import at the **top** of mber-open's
+`src/mber/models/folding/nbb2_model.py` (before any ImmuneBuilder imports):
+
+```python
+import mber.patches.nbb2_compat  # noqa: F401  – apply HMMER 3.4 / BioPython patches
+```
+
+Alternatively, run the patches once from the command line before launching
+`mber-vhh`:
+
+```bash
+conda activate mber
+python -c "import mber.patches.nbb2_compat"
+mber-vhh ...
+```
+
 ### 1. Install mber-vhh CLI (one-time setup)
 
 ```bash
