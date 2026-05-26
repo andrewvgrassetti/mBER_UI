@@ -79,6 +79,39 @@ except AttributeError as e:
     )
 
 # ---------------------------------------------------------------------------
+# Patch ImmuneBuilder's number_sequences to skip anarci when scheme='raw'.
+#
+# When numbering_scheme='raw' (the NanoBodyBuilder2 default), numbering is a
+# no-op (just enumerate). The chain-type assertion in number_sequences calls
+# anarci which triggers the HMMER 3.4 / BioPython parser bug. Bypassing it
+# entirely for 'raw' is safe because the caller already labels the chain type.
+# ---------------------------------------------------------------------------
+
+try:
+    import ImmuneBuilder.sequence_checks as _seq_checks_module
+
+    _original_number_sequences = _seq_checks_module.number_sequences
+
+    def _patched_number_sequences(sequences, numbering_scheme, **kwargs):
+        """
+        When numbering_scheme='raw', skip anarci entirely and return
+        simple enumerate-based numbering. This avoids the HMMER 3.4 /
+        BioPython parser incompatibility that causes chain recognition
+        to fail.
+        """
+        if numbering_scheme == "raw":
+            numbered = {}
+            for chain_type, seq in sequences.items():
+                numbered[chain_type] = list(enumerate(seq, start=1))
+            return numbered
+        return _original_number_sequences(sequences, numbering_scheme, **kwargs)
+
+    _seq_checks_module.number_sequences = _patched_number_sequences
+    logger.debug("ImmuneBuilder number_sequences patch applied (raw scheme bypass)")
+except (ImportError, AttributeError) as e:
+    logger.debug("ImmuneBuilder number_sequences patch skipped: %s", e)
+
+# ---------------------------------------------------------------------------
 # NBB2Model class
 # ---------------------------------------------------------------------------
 
