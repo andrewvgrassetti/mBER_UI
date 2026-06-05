@@ -27,6 +27,17 @@ from ..models.job import (
 _jobs: dict[str, dict] = {}
 _processes: dict[str, asyncio.subprocess.Process] = {}
 
+# GPU concurrency control: one job at a time per GPU device
+_gpu_semaphores: dict[int, asyncio.Semaphore] = {}
+
+
+def _get_gpu_semaphore(gpu_device: int) -> asyncio.Semaphore:
+    """Get or create a semaphore for the given GPU device (max 1 concurrent job)."""
+    if gpu_device not in _gpu_semaphores:
+        _gpu_semaphores[gpu_device] = asyncio.Semaphore(1)
+    return _gpu_semaphores[gpu_device]
+
+
 # Strict pattern for job IDs (8 hex chars)
 _JOB_ID_PATTERN = re.compile(r"^[a-f0-9]{8}$")
 
@@ -142,46 +153,62 @@ async def create_job(submission: JobSubmission, pdb_path: str) -> str:
 
 
 async def _run_job(job_id: str, settings_path: str) -> None:
-    """Run mber-vhh as a subprocess."""
+    """Run mber-vhh as a subprocess, serialized per GPU."""
     job = _jobs[job_id]
-    job["status"] = JobStatus.RUNNING
+    gpu_device = job["submission"].get("gpu_device", 0)
+    semaphore = _get_gpu_semaphore(gpu_device)
+
+    # Mark as queued while waiting for GPU access
+    job["status"] = JobStatus.QUEUED
     job["updated_at"] = datetime.now(timezone.utc)
 
-    log_path = _job_dir(job_id) / "output.log"
+    async with semaphore:
+        # Check if job was cancelled while queued
+        if job["status"] == JobStatus.CANCELLED:
+            return
 
-    try:
-        cmd = [settings.mber_cli_path, "--settings", settings_path]
-
-        with open(log_path, "w") as log_file:
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=log_file,
-                stderr=asyncio.subprocess.STDOUT,
-                cwd=settings.mber_repo_path,
-            )
-            _processes[job_id] = process
-            await process.wait()
-
-        if process.returncode == 0:
-            job["status"] = JobStatus.COMPLETED
-        else:
-            job["status"] = JobStatus.FAILED
-            # Read last 50 lines of log for error context
-            log_tail = ""
-            if log_path.exists():
-                with open(log_path, "r") as lf:
-                    lines = lf.readlines()
-                    log_tail = "".join(lines[-50:])
-            job["error_message"] = (
-                f"Process exited with code {process.returncode}\n\n"
-                f"--- Last 50 lines of log ---\n{log_tail}"
-            )
-    except Exception as e:
-        job["status"] = JobStatus.FAILED
-        job["error_message"] = str(e)
-    finally:
+        job["status"] = JobStatus.RUNNING
         job["updated_at"] = datetime.now(timezone.utc)
-        _processes.pop(job_id, None)
+
+        log_path = _job_dir(job_id) / "output.log"
+
+        try:
+            cmd = [settings.mber_cli_path, "--settings", settings_path]
+
+            env = os.environ.copy()
+            env["CUDA_VISIBLE_DEVICES"] = str(gpu_device)
+
+            with open(log_path, "w") as log_file:
+                process = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=log_file,
+                    stderr=asyncio.subprocess.STDOUT,
+                    cwd=settings.mber_repo_path,
+                    env=env,
+                )
+                _processes[job_id] = process
+                await process.wait()
+
+            if process.returncode == 0:
+                job["status"] = JobStatus.COMPLETED
+            else:
+                job["status"] = JobStatus.FAILED
+                # Read last 50 lines of log for error context
+                log_tail = ""
+                if log_path.exists():
+                    with open(log_path, "r") as lf:
+                        lines = lf.readlines()
+                        log_tail = "".join(lines[-50:])
+                job["error_message"] = (
+                    f"Process exited with code {process.returncode}\n\n"
+                    f"--- Last 50 lines of log ---\n{log_tail}"
+                )
+        except Exception as e:
+            job["status"] = JobStatus.FAILED
+            job["error_message"] = str(e)
+        finally:
+            job["updated_at"] = datetime.now(timezone.utc)
+            _processes.pop(job_id, None)
 
 
 def get_job(job_id: str) -> Optional[JobResponse]:

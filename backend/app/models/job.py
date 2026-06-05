@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 class JobStatus(str, Enum):
     PENDING = "pending"
+    QUEUED = "queued"
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"

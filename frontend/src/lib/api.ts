@@ -5,7 +5,7 @@ const API_BASE = "/api";
 export interface JobListItem {
   id: string;
   target_name: string;
-  status: "pending" | "running" | "completed" | "failed" | "cancelled";
+  status: "pending" | "queued" | "running" | "completed" | "failed" | "cancelled";
   created_at: string;
   error_message: string | null;
   progress: {
