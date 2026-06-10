@@ -27,6 +27,10 @@ from ..models.job import (
 _jobs: dict[str, dict] = {}
 _processes: dict[str, asyncio.subprocess.Process] = {}
 
+# Sequential job queue — only one GPU job runs at a time
+_job_queue: asyncio.Queue[str] = asyncio.Queue()
+_queue_worker_task: Optional[asyncio.Task] = None
+
 # Strict pattern for job IDs (8 hex chars)
 _JOB_ID_PATTERN = re.compile(r"^[a-f0-9]{8}$")
 
@@ -117,7 +121,7 @@ def _parse_progress(job_id: str, submission_data: dict) -> JobProgress:
 
 
 async def create_job(submission: JobSubmission, pdb_path: str) -> str:
-    """Create a new job and start it."""
+    """Create a new job and enqueue it for sequential execution."""
     job_id = str(uuid.uuid4())[:8]
 
     settings_path = _generate_settings_yaml(job_id, submission, pdb_path)
@@ -135,8 +139,8 @@ async def create_job(submission: JobSubmission, pdb_path: str) -> str:
     }
     _jobs[job_id] = job_data
 
-    # Launch the mBER process
-    asyncio.create_task(_run_job(job_id, settings_path))
+    # Enqueue for sequential processing (prevents CUDA OOM from concurrent GPU jobs)
+    await _job_queue.put(job_id)
 
     return job_id
 
@@ -253,7 +257,7 @@ def get_results(job_id: str) -> list[DesignResult]:
 
 
 async def cancel_job(job_id: str) -> bool:
-    """Cancel a running job."""
+    """Cancel a running or pending job."""
     process = _processes.get(job_id)
     if process:
         process.terminate()
@@ -302,3 +306,38 @@ def get_output_file_path(job_id: str, filename: str) -> Optional[Path]:
     if file_path.exists():
         return file_path
     return None
+
+
+async def _queue_worker() -> None:
+    """Process jobs sequentially from the queue (one at a time)."""
+    while True:
+        job_id = await _job_queue.get()
+        try:
+            job = _jobs.get(job_id)
+            if not job:
+                continue
+            # Skip jobs that were cancelled while waiting in queue
+            if job["status"] == JobStatus.CANCELLED:
+                continue
+            settings_path = job["settings_path"]
+            await _run_job(job_id, settings_path)
+        finally:
+            _job_queue.task_done()
+
+
+async def start_queue_worker() -> None:
+    """Start the background queue worker. Call during app startup."""
+    global _queue_worker_task
+    _queue_worker_task = asyncio.create_task(_queue_worker())
+
+
+async def stop_queue_worker() -> None:
+    """Stop the background queue worker. Call during app shutdown."""
+    global _queue_worker_task
+    if _queue_worker_task:
+        _queue_worker_task.cancel()
+        try:
+            await _queue_worker_task
+        except asyncio.CancelledError:
+            pass
+        _queue_worker_task = None
