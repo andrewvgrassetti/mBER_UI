@@ -1,15 +1,28 @@
 """FastAPI application entry point."""
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .core.config import settings
 from .routers import jobs, system, websocket
+from .services.job_service import start_queue_worker, stop_queue_worker
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage application startup and shutdown."""
+    await start_queue_worker()
+    yield
+    await stop_queue_worker()
+
 
 app = FastAPI(
     title="mBER UI API",
     description="Backend API for the mBER VHH nanobody binder design tool",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 # CORS
