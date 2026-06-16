@@ -14,6 +14,7 @@ from typing import Optional
 import yaml
 
 from ..core.config import settings
+from .keepalive import start_keepalive, stop_keepalive
 from ..models.job import (
     DesignResult,
     JobListItem,
@@ -141,6 +142,9 @@ async def create_job(submission: JobSubmission, pdb_path: str) -> str:
 
     # Enqueue for sequential processing (prevents CUDA OOM from concurrent GPU jobs)
     await _job_queue.put(job_id)
+
+    # Ensure CPU keep-alive is running while jobs are queued/active
+    start_keepalive()
 
     return job_id
 
@@ -323,6 +327,9 @@ async def _queue_worker() -> None:
             await _run_job(job_id, settings_path)
         finally:
             _job_queue.task_done()
+            # Stop keep-alive if queue is empty and no more work pending
+            if _job_queue.empty():
+                stop_keepalive()
 
 
 async def start_queue_worker() -> None:
