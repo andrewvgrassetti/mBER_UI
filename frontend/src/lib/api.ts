@@ -97,6 +97,10 @@ export async function cancelJob(jobId: string): Promise<void> {
   await request(`/jobs/${jobId}`, { method: "DELETE" });
 }
 
+export async function retryJob(jobId: string): Promise<{ job_id: string; status: string }> {
+  return request<{ job_id: string; status: string }>(`/jobs/${jobId}/retry`, { method: "POST" });
+}
+
 export async function getSystemStatus(): Promise<SystemStatus> {
   return request<SystemStatus>("/system/status");
 }
