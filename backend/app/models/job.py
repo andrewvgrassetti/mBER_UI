@@ -54,6 +54,7 @@ class JobResponse(BaseModel):
     error_message: Optional[str] = None
     settings_path: Optional[str] = None
     output_dir: Optional[str] = None
+    submission: Optional[dict] = None
 
 
 class JobListItem(BaseModel):
@@ -65,6 +66,7 @@ class JobListItem(BaseModel):
     created_at: datetime
     progress: JobProgress
     error_message: Optional[str] = None
+    submission: Optional[dict] = None
 
 
 class DesignResult(BaseModel):

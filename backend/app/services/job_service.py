@@ -2,6 +2,7 @@
 
 import asyncio
 import csv
+import json
 import os
 import re
 import shutil
@@ -51,6 +52,66 @@ def _job_dir(job_id: str) -> Path:
     if not _validate_job_id(job_id):
         raise ValueError(f"Invalid job ID: {job_id}")
     return _jobs_root() / job_id
+
+
+def _save_job(job_id: str) -> None:
+    """Persist job metadata to disk as JSON."""
+    job = _jobs.get(job_id)
+    if not job:
+        return
+    job_path = _job_dir(job_id)
+    job_path.mkdir(parents=True, exist_ok=True)
+    meta_path = job_path / "job_meta.json"
+    serializable = {
+        "id": job["id"],
+        "target_name": job["target_name"],
+        "status": job["status"].value if isinstance(job["status"], JobStatus) else job["status"],
+        "created_at": job["created_at"].isoformat(),
+        "updated_at": job["updated_at"].isoformat(),
+        "settings_path": job.get("settings_path"),
+        "output_dir": job.get("output_dir"),
+        "error_message": job.get("error_message"),
+        "submission": job.get("submission"),
+    }
+    with open(meta_path, "w") as f:
+        json.dump(serializable, f, indent=2)
+
+
+def _load_existing_jobs() -> None:
+    """Load persisted jobs from disk on startup."""
+    jobs_root = _jobs_root()
+    for entry in jobs_root.iterdir():
+        if not entry.is_dir():
+            continue
+        if not _JOB_ID_PATTERN.match(entry.name):
+            continue
+        meta_path = entry / "job_meta.json"
+        if not meta_path.exists():
+            continue
+        try:
+            with open(meta_path, "r") as f:
+                data = json.load(f)
+            # Reconstruct job data
+            job_data = {
+                "id": data["id"],
+                "target_name": data["target_name"],
+                "status": JobStatus(data["status"]),
+                "created_at": datetime.fromisoformat(data["created_at"]),
+                "updated_at": datetime.fromisoformat(data["updated_at"]),
+                "settings_path": data.get("settings_path"),
+                "output_dir": data.get("output_dir"),
+                "error_message": data.get("error_message"),
+                "submission": data.get("submission"),
+            }
+            # Mark previously running/pending jobs as interrupted
+            if job_data["status"] in (JobStatus.RUNNING, JobStatus.PENDING):
+                job_data["status"] = JobStatus.FAILED
+                job_data["error_message"] = "Job interrupted by server restart"
+                job_data["updated_at"] = datetime.now(timezone.utc)
+            _jobs[data["id"]] = job_data
+        except (json.JSONDecodeError, KeyError, ValueError):
+            # Skip corrupted metadata files
+            continue
 
 
 def _generate_settings_yaml(job_id: str, submission: JobSubmission, pdb_path: str) -> str:
@@ -139,6 +200,7 @@ async def create_job(submission: JobSubmission, pdb_path: str) -> str:
         "submission": submission.model_dump(),
     }
     _jobs[job_id] = job_data
+    _save_job(job_id)
 
     # Enqueue for sequential processing (prevents CUDA OOM from concurrent GPU jobs)
     await _job_queue.put(job_id)
@@ -154,6 +216,7 @@ async def _run_job(job_id: str, settings_path: str) -> None:
     job = _jobs[job_id]
     job["status"] = JobStatus.RUNNING
     job["updated_at"] = datetime.now(timezone.utc)
+    _save_job(job_id)
 
     log_path = _job_dir(job_id) / "output.log"
 
@@ -189,6 +252,7 @@ async def _run_job(job_id: str, settings_path: str) -> None:
         job["error_message"] = str(e)
     finally:
         job["updated_at"] = datetime.now(timezone.utc)
+        _save_job(job_id)
         _processes.pop(job_id, None)
 
 
@@ -210,6 +274,7 @@ def get_job(job_id: str) -> Optional[JobResponse]:
         error_message=job.get("error_message"),
         settings_path=job.get("settings_path"),
         output_dir=job.get("output_dir"),
+        submission=job.get("submission"),
     )
 
 
@@ -226,6 +291,7 @@ def list_jobs() -> list[JobListItem]:
                 created_at=job["created_at"],
                 progress=progress,
                 error_message=job.get("error_message"),
+                submission=job.get("submission"),
             )
         )
     return sorted(result, key=lambda j: j.created_at, reverse=True)
@@ -274,6 +340,7 @@ async def cancel_job(job_id: str) -> bool:
     if job:
         job["status"] = JobStatus.CANCELLED
         job["updated_at"] = datetime.now(timezone.utc)
+        _save_job(job_id)
         return True
     return False
 
@@ -335,6 +402,7 @@ async def _queue_worker() -> None:
 async def start_queue_worker() -> None:
     """Start the background queue worker. Call during app startup."""
     global _queue_worker_task
+    _load_existing_jobs()
     _queue_worker_task = asyncio.create_task(_queue_worker())
 
 
@@ -348,3 +416,36 @@ async def stop_queue_worker() -> None:
         except asyncio.CancelledError:
             pass
         _queue_worker_task = None
+
+
+async def retry_job(job_id: str) -> Optional[str]:
+    """Retry a failed or cancelled job by creating a new job with the same parameters."""
+    job = _jobs.get(job_id)
+    if not job:
+        return None
+    if job["status"] not in (JobStatus.FAILED, JobStatus.CANCELLED):
+        return None
+
+    submission_data = job.get("submission")
+    if not submission_data:
+        return None
+
+    submission = JobSubmission(**submission_data)
+
+    # Determine the PDB path from the original settings
+    settings_path = job.get("settings_path")
+    pdb_path = None
+    if settings_path and os.path.exists(settings_path):
+        with open(settings_path, "r") as f:
+            settings_yaml = yaml.safe_load(f)
+        pdb_path = settings_yaml.get("target", {}).get("pdb")
+
+    if not pdb_path:
+        # Fallback: use pdb_code if available
+        if submission.pdb_code:
+            pdb_path = submission.pdb_code.upper()
+        else:
+            return None
+
+    new_job_id = await create_job(submission, pdb_path)
+    return new_job_id

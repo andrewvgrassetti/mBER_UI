@@ -131,3 +131,15 @@ async def cancel_job(job_id: str):
     if not success:
         raise HTTPException(status_code=404, detail="Job not found")
     return {"status": "cancelled"}
+
+
+@router.post("/{job_id}/retry", response_model=dict)
+async def retry_job(job_id: str):
+    """Retry a failed or cancelled job by creating a new job with the same parameters."""
+    new_job_id = await job_service.retry_job(job_id)
+    if not new_job_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Job cannot be retried. Only failed or cancelled jobs with saved parameters can be retried.",
+        )
+    return {"job_id": new_job_id, "status": "submitted"}
