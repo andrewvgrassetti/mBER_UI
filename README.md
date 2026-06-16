@@ -34,7 +34,7 @@ mBER_UI/
 - Python 3.11+ (for backend venv)
 - Node.js 20+ (for frontend)
 
-## Quick Start (Development)
+## Setup (one-time)
 
 ### 0. Apply HMMER 3.4 / BioPython compatibility patches (one-time setup)
 
@@ -105,47 +105,74 @@ MBER_UI_CORS_ORIGINS=["http://localhost:5173","http://localhost:3000"]
 
 Save with `Ctrl+O`, `Enter`, `Ctrl+X`.
 
-### 5. Start the backend
+## Running the App
+
+Start the backend:
 
 ```bash
 cd ~/GitRepos/mBER_UI/backend
 source venv/bin/activate
-uvicorn app.main:app --reload --port 8000
+nohup uvicorn app.main:app --port 8000 > uvicorn.log 2>&1 &
 ```
 
-Leave this terminal running.
-
-### 6. Start the frontend (new terminal)
+Start the frontend:
 
 ```bash
 cd ~/GitRepos/mBER_UI/frontend
-npm install
-npm run dev
+npm install   # first time only
+nohup npm run dev > frontend.log 2>&1 &
 ```
 
 Open http://localhost:5173 in your browser.
 
-## Restarting the App
-
-### Stop
-
-1. In the **backend** terminal: press `Ctrl+C`
-2. In the **frontend** terminal: press `Ctrl+C`
-
-### Restart backend
+## Deploying Code Changes
 
 ```bash
-cd ~/GitRepos/mBER_UI/backend
-source venv/bin/activate
+cd ~/GitRepos/mBER_UI
+git pull
+
+# Restart backend
+pkill -f "uvicorn app.main:app"
+cd backend && source venv/bin/activate
+nohup uvicorn app.main:app --port 8000 > uvicorn.log 2>&1 &
+
+# Restart frontend (only if frontend files changed)
+pkill -f "npm run dev"
+cd ../frontend
+nohup npm run dev > frontend.log 2>&1 &
+```
+
+## Monitoring
+
+```bash
+# Check if backend is running
+pgrep -fa uvicorn
+
+# Follow backend logs
+tail -f ~/GitRepos/mBER_UI/backend/uvicorn.log
+
+# Check running/pending jobs
+curl -s http://localhost:8000/jobs | python3 -c "
+import json, sys
+for j in json.load(sys.stdin):
+    if j['status'] in ('running', 'pending'):
+        print(f\"{j['id']} - {j['target_name']} - {j['status']}\")
+"
+
+# Check job output directories
+cat jobs/<job-id>/output.log
+ls jobs/<job-id>/output/
+```
+
+## Development Mode
+
+For active development, you can use `--reload` to auto-restart the backend on code changes:
+
+```bash
 uvicorn app.main:app --reload --port 8000
 ```
 
-### Restart frontend (new terminal)
-
-```bash
-cd ~/GitRepos/mBER_UI/frontend
-npm run dev
-```
+> **⚠️ Warning:** Do not use `--reload` when running mBER jobs — file writes (logs, CSVs, PDBs) to `backend/jobs/` trigger uvicorn restarts that kill running processes.
 
 ## Running Overnight Jobs
 
@@ -162,27 +189,6 @@ No extra steps are needed. Just start the backend and submit your jobs — the k
 ```
 INFO: CPU keep-alive STARTED (preventing CloudWatch low-CPU alarm)
 INFO: CPU keep-alive STOPPED (no active jobs)
-```
-
-### Running the backend in the background (survives SSH disconnection)
-
-To start a long-running session that won't die when you close your SSH connection:
-
-```bash
-cd ~/GitRepos/mBER_UI/backend
-source venv/bin/activate
-nohup uvicorn app.main:app --port 8000 > uvicorn.log 2>&1 &
-```
-
-### Checking on it later
-
-```bash
-# Follow live logs
-tail -f ~/GitRepos/mBER_UI/backend/uvicorn.log
-
-# Check job output directories
-cat jobs/<job-id>/output.log
-ls jobs/<job-id>/output/
 ```
 
 ## Quick Start (Docker)
