@@ -428,7 +428,34 @@ async def retry_job(job_id: str) -> Optional[str]:
 
     submission_data = job.get("submission")
     if not submission_data:
-        return None
+        # Legacy job — reconstruct submission from settings.yaml
+        settings_path = job.get("settings_path")
+        if not settings_path or not os.path.exists(settings_path):
+            return None
+        with open(settings_path, "r") as f:
+            settings_yaml = yaml.safe_load(f)
+
+        target = settings_yaml.get("target", {})
+        stopping = settings_yaml.get("stopping", {})
+        filters = settings_yaml.get("filters", {})
+        output = settings_yaml.get("output", {})
+        binder = settings_yaml.get("binder", {})
+
+        submission_data = {
+            "target_name": target.get("name"),
+            "pdb_code": None,
+            "target_chains": target.get("chains"),
+            "hotspot_residues": target.get("hotspots"),
+            "num_accepted": stopping.get("num_accepted", 100),
+            "max_trajectories": stopping.get("max_trajectories", 10000),
+            "min_iptm": filters.get("min_iptm", 0.75),
+            "min_plddt": filters.get("min_plddt", 0.70),
+            "masked_vhh_sequence": binder.get("masked_sequence"),
+            "skip_animations": output.get("skip_animations", False),
+            "skip_pickle": output.get("skip_pickle", True),
+            "skip_png": output.get("skip_png", False),
+            "gpu_device": 0,
+        }
 
     submission = JobSubmission(**submission_data)
 
