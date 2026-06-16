@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .core.config import settings
 from .routers import jobs, system, websocket
 from .services.job_service import start_queue_worker, stop_queue_worker
+from .services.keepalive import shutdown_keepalive
 
 
 @asynccontextmanager
@@ -16,6 +17,7 @@ async def lifespan(app: FastAPI):
     await start_queue_worker()
     yield
     await stop_queue_worker()
+    shutdown_keepalive()
 
 
 app = FastAPI(

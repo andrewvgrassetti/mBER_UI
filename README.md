@@ -147,6 +147,44 @@ cd ~/GitRepos/mBER_UI/frontend
 npm run dev
 ```
 
+## Running Overnight Jobs
+
+### Why there's a CPU keep-alive
+
+mBER protein design jobs are GPU-intensive — the CPU stays nearly idle while the GPU does all the work. On AWS EC2, a CloudWatch alarm monitors CPU utilization and automatically **stops the instance** when it drops below ~5-10% for a sustained period (typically 15 minutes). This would kill any running overnight jobs.
+
+The backend includes an automatic CPU keep-alive that generates lightweight CPU activity (~10-15% utilization on a single core) whenever jobs are queued or running. This prevents the CloudWatch alarm from firing without affecting GPU performance or memory.
+
+### It's fully automatic
+
+No extra steps are needed. Just start the backend and submit your jobs — the keep-alive activates when a job is enqueued and stops when all jobs finish. You'll see log messages like:
+
+```
+INFO: CPU keep-alive STARTED (preventing CloudWatch low-CPU alarm)
+INFO: CPU keep-alive STOPPED (no active jobs)
+```
+
+### Running the backend in the background (survives SSH disconnection)
+
+To start a long-running session that won't die when you close your SSH connection:
+
+```bash
+cd ~/GitRepos/mBER_UI/backend
+source venv/bin/activate
+nohup uvicorn app.main:app --port 8000 > uvicorn.log 2>&1 &
+```
+
+### Checking on it later
+
+```bash
+# Follow live logs
+tail -f ~/GitRepos/mBER_UI/backend/uvicorn.log
+
+# Check job output directories
+cat jobs/<job-id>/output.log
+ls jobs/<job-id>/output/
+```
+
 ## Quick Start (Docker)
 
 ```bash
