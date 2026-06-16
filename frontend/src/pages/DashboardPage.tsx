@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { listJobs, cancelJob, type JobListItem } from "../lib/api";
+import { listJobs, cancelJob, retryJob, type JobListItem } from "../lib/api";
 
 const STATUS_COLORS: Record<string, string> = {
   pending: "bg-yellow-100 text-yellow-800",
@@ -35,6 +35,15 @@ export default function DashboardPage() {
     if (confirm("Cancel this job?")) {
       await cancelJob(jobId);
       fetchJobs();
+    }
+  }
+
+  async function handleRetry(jobId: string) {
+    try {
+      await retryJob(jobId);
+      fetchJobs();
+    } catch (err) {
+      console.error("Failed to retry job:", err);
     }
   }
 
@@ -144,6 +153,14 @@ export default function DashboardPage() {
                       Cancel
                     </button>
                   </>
+                )}
+                {(job.status === "failed" || job.status === "cancelled") && (
+                  <button
+                    onClick={() => handleRetry(job.id)}
+                    className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-accent"
+                  >
+                    Retry
+                  </button>
                 )}
               </div>
             </div>
