@@ -6,11 +6,24 @@ export default function JobSubmitPage() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [seqWarning, setSeqWarning] = useState<string | null>(null);
+
+  function validateSequence(value: string): string | null {
+    const cleaned = value.trim().replace(/^["']+|["']+$/g, "");
+    if (cleaned.length === 0) return null;
+    const invalid = cleaned.replace(/[A-Za-z*]/g, "");
+    if (invalid.length > 0) {
+      const unique = [...new Set(invalid)].join(" ");
+      return `Sequence contains invalid characters: ${unique}`;
+    }
+    return null;
+  }
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    setSeqWarning(null);
 
     const form = e.currentTarget;
     const formData = new FormData(form);
@@ -20,6 +33,13 @@ export default function JobSubmitPage() {
     const pdbFile = formData.get("pdb_file") as File | null;
     if (pdbCode && (!pdbFile || !pdbFile.name || pdbFile.size === 0)) {
       formData.delete("pdb_file");
+    }
+
+    // Strip surrounding quotes from masked VHH sequence
+    const rawSequence = formData.get("masked_vhh_sequence") as string | null;
+    if (rawSequence) {
+      const cleaned = rawSequence.trim().replace(/^["']+|["']+$/g, "");
+      formData.set("masked_vhh_sequence", cleaned);
     }
 
     try {
@@ -181,7 +201,11 @@ export default function JobSubmitPage() {
               rows={3}
               placeholder="Framework with '*' for design positions"
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
+              onChange={(e) => setSeqWarning(validateSequence(e.target.value))}
             />
+            {seqWarning && (
+              <p className="text-xs text-destructive mt-1">{seqWarning}</p>
+            )}
           </div>
         </div>
 

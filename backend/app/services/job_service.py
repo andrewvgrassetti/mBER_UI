@@ -108,6 +108,26 @@ def _load_existing_jobs() -> None:
                 job_data["status"] = JobStatus.FAILED
                 job_data["error_message"] = "Job interrupted by server restart"
                 job_data["updated_at"] = datetime.now(timezone.utc)
+            # One-time cleanup: fix broken settings.yaml with quoted masked_sequence
+            settings_path = job_data.get("settings_path")
+            if settings_path and os.path.exists(settings_path):
+                try:
+                    with open(settings_path, "r") as sf:
+                        settings_data = yaml.safe_load(sf)
+                    if (
+                        settings_data
+                        and isinstance(settings_data.get("binder"), dict)
+                        and isinstance(settings_data["binder"].get("masked_sequence"), str)
+                    ):
+                        seq = settings_data["binder"]["masked_sequence"]
+                        cleaned = seq.strip().strip('"').strip("'")
+                        if cleaned != seq:
+                            settings_data["binder"]["masked_sequence"] = cleaned
+                            with open(settings_path, "w") as sf:
+                                yaml.dump(settings_data, sf, default_flow_style=False)
+                except Exception:
+                    pass  # Don't block startup for cleanup failures
+
             _jobs[data["id"]] = job_data
         except (json.JSONDecodeError, KeyError, ValueError):
             # Skip corrupted metadata files
@@ -146,7 +166,8 @@ def _generate_settings_yaml(job_id: str, submission: JobSubmission, pdb_path: st
     }
 
     if submission.masked_vhh_sequence:
-        settings_dict["binder"] = {"masked_sequence": submission.masked_vhh_sequence}
+        cleaned_sequence = submission.masked_vhh_sequence.strip().strip('"').strip("'")
+        settings_dict["binder"] = {"masked_sequence": cleaned_sequence}
 
     settings_path = str(job_path / "settings.yaml")
     with open(settings_path, "w") as f:
