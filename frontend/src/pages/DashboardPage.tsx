@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { listJobs, cancelJob, retryJob, type JobListItem } from "../lib/api";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -10,9 +11,61 @@ const STATUS_COLORS: Record<string, string> = {
   cancelled: "bg-gray-100 text-gray-800",
 };
 
+type FilterTab = "all" | "active" | "completed" | "failed";
+
+const FILTER_TABS: { key: FilterTab; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "active", label: "Active" },
+  { key: "completed", label: "Completed" },
+  { key: "failed", label: "Failed" },
+];
+
+function filterJobs(jobs: JobListItem[], filter: FilterTab): JobListItem[] {
+  switch (filter) {
+    case "active":
+      return jobs.filter((j) => j.status === "running" || j.status === "pending");
+    case "completed":
+      return jobs.filter((j) => j.status === "completed");
+    case "failed":
+      return jobs.filter((j) => j.status === "failed" || j.status === "cancelled");
+    case "all":
+    default:
+      return jobs;
+  }
+}
+
+function countByFilter(jobs: JobListItem[], filter: FilterTab): number {
+  return filterJobs(jobs, filter).length;
+}
+
+function CollapsibleError({ message }: { message: string }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="mt-2">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex items-center space-x-1 text-xs font-medium text-red-700 dark:text-red-300 hover:underline"
+      >
+        {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+        <span>Error details</span>
+      </button>
+      {open && (
+        <div className="mt-1 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg p-4">
+          <pre className="font-mono text-xs text-red-800 dark:text-red-200 whitespace-pre-wrap">
+            {message}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const [jobs, setJobs] = useState<JobListItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeFilter, setActiveFilter] = useState<FilterTab>("active");
 
   async function fetchJobs() {
     try {
@@ -72,7 +125,35 @@ export default function DashboardPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {jobs.map((job) => (
+          <div className="flex space-x-2 mb-4">
+            {FILTER_TABS.map((tab) => {
+              const count = countByFilter(jobs, tab.key);
+              const isActive = activeFilter === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveFilter(tab.key)}
+                  className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                    isActive
+                      ? "bg-primary text-primary-foreground"
+                      : "border hover:bg-accent"
+                  }`}
+                >
+                  {tab.label}{" "}
+                  <span
+                    className={`inline-flex items-center justify-center rounded-full px-1.5 py-0.5 text-xs ${
+                      isActive
+                        ? "bg-primary-foreground/20 text-primary-foreground"
+                        : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {filterJobs(jobs, activeFilter).map((job) => (
             <div
               key={job.id}
               className="rounded-lg border p-4 flex items-center justify-between"
@@ -121,11 +202,7 @@ export default function DashboardPage() {
                 )}
                 {/* Error message for failed jobs */}
                 {job.status === "failed" && job.error_message && (
-                  <div className="mt-2 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg p-4">
-                    <pre className="font-mono text-xs text-red-800 dark:text-red-200 whitespace-pre-wrap">
-                      {job.error_message}
-                    </pre>
-                  </div>
+                  <CollapsibleError message={job.error_message} />
                 )}
               </div>
 
