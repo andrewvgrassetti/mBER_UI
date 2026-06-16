@@ -262,7 +262,7 @@ def get_job(job_id: str) -> Optional[JobResponse]:
     if not job:
         return None
 
-    progress = _parse_progress(job_id, job.get("submission", {}))
+    progress = _parse_progress(job_id, job.get("submission") or {})
 
     return JobResponse(
         id=job["id"],
@@ -282,7 +282,7 @@ def list_jobs() -> list[JobListItem]:
     """List all jobs."""
     result = []
     for job_id, job in _jobs.items():
-        progress = _parse_progress(job_id, job.get("submission", {}))
+        progress = _parse_progress(job_id, job.get("submission") or {})
         result.append(
             JobListItem(
                 id=job["id"],
